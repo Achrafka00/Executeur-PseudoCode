@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #f3f4f6;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Custom scrollbar for editor */
+.code-editor::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.code-editor::-webkit-scrollbar-track {
+  background: #1e1e1e; 
+}
+.code-editor::-webkit-scrollbar-thumb {
+  background: #4b5563; 
+  border-radius: 4px;
+}
+.code-editor::-webkit-scrollbar-thumb:hover {
+  background: #6b7280; 
+}
+
+.highlight-line {
+  background-color: rgba(255, 255, 0, 0.2);
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}

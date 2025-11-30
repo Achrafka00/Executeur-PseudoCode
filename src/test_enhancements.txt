@@ -1,0 +1,31 @@
+ALGORITHME TestEnhancements
+VAR
+    X : ENTIER
+DEBUT
+    X = 10
+    
+    // Test Case Insensitivity
+    si X > 5 alors
+        ecrire("Case insensitivity works")
+    finsi
+
+    // Test SINON SI
+    X = 20
+    SI X < 10 ALORS
+        ECRIRE("X < 10")
+    SINON SI X < 15 ALORS
+        ECRIRE("X < 15")
+    SINONSI X < 25 ALORS
+        ECRIRE("SINONSI works: X < 25")
+    SINON
+        ECRIRE("Else")
+    FINSI
+
+    // Test Nested SI
+    SI X > 0 ALORS
+        ECRIRE("Outer IF")
+        SI X > 15 ALORS
+            ECRIRE("Inner IF works")
+        FINSI
+    FINSI
+FIN
