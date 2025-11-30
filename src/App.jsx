@@ -3,6 +3,7 @@ import { Play, Square, RotateCcw, FastForward, Bug } from 'lucide-react';
 import Editor from './components/Editor';
 import Console from './components/Console';
 import VariablesPanel from './components/VariablesPanel';
+import LoopPanel from './components/LoopPanel';
 import { tokenize } from './interpreter/Tokenizer';
 import { parse } from './interpreter/Parser';
 import { Executor } from './interpreter/Executor';
@@ -103,7 +104,12 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [isWaitingForInput, setIsWaitingForInput] = useState(false);
   const [error, setError] = useState(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [changedVariables, setChangedVariables] = useState([]);
+  const [inputVariables, setInputVariables] = useState([]);
   const [delay, setDelay] = useState(500);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   const executorRef = useRef(null);
   const inputResolverRef = useRef(null);
@@ -111,44 +117,19 @@ function App() {
   const handleRun = async () => {
     if (isRunning) return;
 
-    setOutput([]);
-    setVariables({});
-    setError(null);
-    setIsRunning(true);
-    setCurrentLine(0);
-
     try {
       const tokens = tokenize(code);
 
       // Run Linter
       const suggestions = lint(tokens);
-      if (suggestions.length > 0) {
-        setOutput(prev => [
-          ...prev,
-          ...suggestions.map(s => `[${s.type === 'warning' ? '⚠️' : 'ℹ️'} Ligne ${s.line}] ${s.message}`)
-        ]);
-      }
+      // Suggestions are now passed directly to Editor via state/props, not added to output console.
 
       const instructions = parse(tokens);
 
       executorRef.current = new Executor(
         instructions,
-        (msg, isNewline) => {
-          if (isNewline) {
-            // Newline: flush buffer
-            setOutput(prev => [...prev, '']);
-          } else {
-            // Inline: append to last line
-            setOutput(prev => {
-              const newOutput = [...prev];
-              if (newOutput.length === 0 || prev[prev.length - 1] === '\n') {
-                newOutput.push(msg);
-              } else {
-                newOutput[newOutput.length - 1] += msg;
-              }
-              return newOutput;
-            });
-          }
+        (out, newline) => {
+          // Output handling is now done via state updates in the loop
         },
         (varName) => {
           setIsWaitingForInput(true);
@@ -158,20 +139,40 @@ function App() {
         }
       );
 
-      runLoop();
+      setIsRunning(true);
+      setIsPaused(true); // Start paused for step-by-step
+      setHistory([]); // Reset history
+
+      // Initial state
+      setVariables({});
+      setOutput([]);
+      setCurrentLine(executorRef.current.instructions[0]?.line || 1);
+      setError(null);
+
     } catch (err) {
       setError(err.message);
-      setIsRunning(false);
     }
   };
 
   const runLoop = async () => {
     if (!executorRef.current) return;
 
-    while (executorRef.current.status !== 'finished' && executorRef.current.status !== 'error') {
+    let iterations = 0;
+    const MAX_ITERATIONS = 10000;
+
+    while (executorRef.current.status !== 'finished' && executorRef.current.status !== 'error' && !isPaused) {
+      iterations++;
+      if (iterations > MAX_ITERATIONS) {
+        setError("❌ ERREUR : Boucle infinie détectée (ou trop longue).\n👉 Solution : Vérifiez vos conditions de sortie de boucle.");
+        setIsRunning(false);
+        setIsPaused(false);
+        break;
+      }
+
       // Update state for UI
       setCurrentLine(executorRef.current.instructions[executorRef.current.pc]?.line || 0);
       setVariables({ ...executorRef.current.variables });
+      setOutput([...executorRef.current.output]); // Sync output
 
       // Wait for delay
       await new Promise(r => setTimeout(r, delay));
@@ -188,7 +189,6 @@ function App() {
       if (!shouldContinue) break;
     }
 
-    setIsRunning(false);
     setCurrentLine(0);
     if (executorRef.current.status === 'error') {
       setError(executorRef.current.error);
@@ -250,18 +250,31 @@ FIN`);
             <div className="bg-blue-600 text-white p-1.5 rounded-lg">
               <Bug size={20} />
             </div>
-            <h1 className="text-xl font-bold text-gray-800 tracking-tight">AlgoViz <span className="text-blue-600 text-sm font-normal bg-blue-50 px-2 py-0.5 rounded-full">Morocco Edition</span></h1>
+            <h1 className="text-xl font-bold text-gray-800 tracking-tight">
+              Deep Sojourner <span className="text-blue-600 text-sm font-normal ml-2">Interpréteur Pseudo-Code</span>
+            </h1>
           </div>
 
-          <select
-            onChange={(e) => handleLoadExample(e.target.value)}
-            className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-gray-50 py-1 px-2"
-            defaultValue="Test Features"
-          >
-            {Object.keys(EXAMPLES).map(key => (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowTutorial(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-md font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+              title="Tutoriel"
+            >
+              <BookOpen size={18} /> Tutoriel
+            </button>
+
+            <div className="h-6 w-px bg-gray-300 mx-1"></div>
+
+            <select
+              className="px-3 py-2 rounded-md border border-gray-300 text-sm bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
+              onChange={(e) => handleLoadExample(e.target.value)}
+              defaultValue="Test Features"
+            >  {Object.keys(EXAMPLES).map(key => (
               <option key={key} value={key}>{key}</option>
             ))}
-          </select>
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -327,6 +340,24 @@ FIN`);
         <div className="flex-1 flex flex-col min-w-0 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Éditeur de Code</span>
+            <div className="flex gap-2">
+              <button
+                onClick={handleStepBack}
+                className="text-xs px-2 py-1 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                disabled={!executorRef.current || history.length === 0}
+                title="Revenir en arrière"
+              >
+                ⏪ Précédent
+              </button>
+              <button
+                onClick={handleStepForward}
+                className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 font-medium"
+                disabled={!executorRef.current}
+                title="Exécuter la ligne suivante"
+              >
+                Suivant ⏩
+              </button>
+            </div>
             {error && <span className="text-xs text-red-500 font-medium truncate max-w-md">{error}</span>}
           </div>
           <div className="flex-1 relative">
@@ -335,10 +366,7 @@ FIN`);
               onChange={setCode}
               currentLine={currentLine}
               errorLine={error ? (error.match(/line (\d+)/i) ? parseInt(error.match(/line (\d+)/i)[1]) : null) : null}
-              suggestions={output.filter(line => line.startsWith('[ℹ️') || line.startsWith('[⚠️')).map(line => {
-                const match = line.match(/Ligne (\d+)\] (.*)/);
-                return match ? { line: parseInt(match[1]), message: match[2], type: line.includes('⚠️') ? 'warning' : 'info' } : null;
-              }).filter(Boolean)}
+              suggestions={lint(tokenize(code))}
             />
           </div>
         </div>
@@ -346,8 +374,21 @@ FIN`);
         {/* Right: Output & Variables */}
         <div className="w-1/3 flex flex-col gap-4 min-w-[300px]">
           {/* Variables */}
-          <div className="flex-1 min-h-0">
-            <VariablesPanel variables={variables} />
+          <div className="flex-1 min-h-0 flex flex-col gap-4">
+            <div className="flex-1 min-h-0">
+              <VariablesPanel
+                variables={variables}
+                changedVariables={changedVariables}
+                inputVariables={inputVariables}
+              />
+            </div>
+            {/* Loop Panel */}
+            <div className="h-1/3 min-h-[150px]">
+              <LoopPanel
+                loops={executorRef.current?.loopStack || []}
+                variables={variables}
+              />
+            </div>
           </div>
 
           {/* Console */}
@@ -360,6 +401,8 @@ FIN`);
           </div>
         </div>
       </main>
+
+      <TutorialModal isOpen={showTutorial} onClose={() => setShowTutorial(false)} />
     </div>
   );
 }

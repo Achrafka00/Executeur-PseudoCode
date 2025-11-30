@@ -646,7 +646,7 @@ export function parse(tokens) {
                 }
             }
 
-            consume(TokenType.KEYWORD, 'FINPOUR', "Expect 'FINPOUR'");
+            consume(TokenType.KEYWORD, 'FINPOUR', "❌ ERREUR : 'FINPOUR' manquant.\n👉 Solution : Vérifiez que chaque boucle POUR a son FINPOUR correspondant.");
 
             const incrementInstructionIndex = instructions.length;
             instructions.push({ type: 'FOR_LOOP_INCREMENT', varName, line });
@@ -690,7 +690,7 @@ export function parse(tokens) {
                 }
             }
 
-            consume(TokenType.KEYWORD, 'FINPOUR', "Expect 'FINPOUR'");
+            consume(TokenType.KEYWORD, 'FINPOUR', "❌ ERREUR : 'FINPOUR' manquant.\n👉 Solution : Vérifiez que chaque boucle POUR a son FINPOUR correspondant.");
 
             const incrementInstructionIndex = instructions.length;
             const increment = {

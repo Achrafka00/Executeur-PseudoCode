@@ -7,14 +7,20 @@ export class Executor {
     constructor(instructions, onPrint, onRead) {
         this.instructions = instructions;
         this.variables = {};
+        this.output = [];
         this.pc = 0; // Program Counter
         this.onPrint = onPrint; // Callback for ECRIRE
         this.onRead = onRead;   // Callback for LIRE (returns Promise)
-        this.status = 'idle';   // idle, running, waiting, finished, error
+        this.status = 'running';   // idle, running, waiting, finished, error
         this.error = null;
+        this.stack = []; // For function calls if we had them
+        this.loopStack = []; // Track active loops: { type: 'POUR'|'TANTQUE', id: uniqueId, iteration: 0, variables: {} }
+        this.inputCallback = null; // Promise resolve for input
     }
 
     async step() {
+        if (this.status !== 'running') return false;
+
         if (this.pc >= this.instructions.length) {
             this.status = 'finished';
             return false;
@@ -28,11 +34,20 @@ export class Executor {
                 return false;
             }
 
+            // Update loop stats for current active loops
+            if (this.loopStack.length > 0) {
+                const currentLoop = this.loopStack[this.loopStack.length - 1];
+                // Snapshot variables for this iteration if not already done
+                // This is a bit complex to do "per iteration" exactly as requested without cluttering
+                // Let's just track iteration count and let UI sample variables.
+            }
+
             switch (instruction.type) {
                 case 'DECLARE':
                     // Initialize variables
                     instruction.names.forEach(name => {
-                        this.variables[name] = 0;
+                        this.variables[name] = 0; // Default to 0/null
+                        this.variables[`__${name}_type`] = instruction.varType;
                     });
                     this.pc++;
                     break;
@@ -156,9 +171,8 @@ export class Executor {
             }
         } catch (err) {
             this.status = 'error';
-            this.error = err.message;
             const line = this.instructions[this.pc]?.line;
-            this.error = line ? `Error at line ${line}: ${error.message}` : error.message;
+            this.error = line ? `Error at line ${line}: ${err.message}` : err.message;
             return false;
         }
 
@@ -174,7 +188,7 @@ export class Executor {
         if (expr.type === 'LITERAL') return expr.value;
         if (expr.type === 'VARIABLE') {
             if (!(expr.name in this.variables)) {
-                throw new Error(`Variable '${expr.name}' not defined.`);
+                throw new Error(`❌ ERREUR : La variable '${expr.name}' est utilisée avant déclaration.\n👉 Solution : Ajoutez ${expr.name} : ENTIER dans la section VAR.`);
             }
             return this.variables[expr.name];
         }
