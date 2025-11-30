@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, RotateCcw, FastForward, Bug } from 'lucide-react';
+import { Play, Square, RotateCcw, FastForward, Bug, BookOpen } from 'lucide-react';
 import Editor from './components/Editor';
 import Console from './components/Console';
 import VariablesPanel from './components/VariablesPanel';
-import LoopPanel from './components/LoopPanel';
+import TutorialModal from './components/TutorialModal';
 import { tokenize } from './interpreter/Tokenizer';
 import { parse } from './interpreter/Parser';
 import { Executor } from './interpreter/Executor';
@@ -104,10 +104,6 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [isWaitingForInput, setIsWaitingForInput] = useState(false);
   const [error, setError] = useState(null);
-  const [isPaused, setIsPaused] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [changedVariables, setChangedVariables] = useState([]);
-  const [inputVariables, setInputVariables] = useState([]);
   const [delay, setDelay] = useState(500);
   const [showTutorial, setShowTutorial] = useState(false);
 
@@ -128,8 +124,22 @@ function App() {
 
       executorRef.current = new Executor(
         instructions,
-        (out, newline) => {
-          // Output handling is now done via state updates in the loop
+        (msg, isNewline) => {
+          if (isNewline) {
+            // Newline: flush buffer
+            setOutput(prev => [...prev, '']);
+          } else {
+            // Inline: append to last line
+            setOutput(prev => {
+              const newOutput = [...prev];
+              if (newOutput.length === 0 || prev[prev.length - 1] === '\n') {
+                newOutput.push(msg);
+              } else {
+                newOutput[newOutput.length - 1] += msg;
+              }
+              return newOutput;
+            });
+          }
         },
         (varName) => {
           setIsWaitingForInput(true);
@@ -140,14 +150,14 @@ function App() {
       );
 
       setIsRunning(true);
-      setIsPaused(true); // Start paused for step-by-step
-      setHistory([]); // Reset history
 
       // Initial state
       setVariables({});
       setOutput([]);
       setCurrentLine(executorRef.current.instructions[0]?.line || 1);
       setError(null);
+
+      runLoop();
 
     } catch (err) {
       setError(err.message);
@@ -160,19 +170,17 @@ function App() {
     let iterations = 0;
     const MAX_ITERATIONS = 10000;
 
-    while (executorRef.current.status !== 'finished' && executorRef.current.status !== 'error' && !isPaused) {
+    while (executorRef.current.status !== 'finished' && executorRef.current.status !== 'error') {
       iterations++;
       if (iterations > MAX_ITERATIONS) {
         setError("❌ ERREUR : Boucle infinie détectée (ou trop longue).\n👉 Solution : Vérifiez vos conditions de sortie de boucle.");
         setIsRunning(false);
-        setIsPaused(false);
         break;
       }
 
       // Update state for UI
       setCurrentLine(executorRef.current.instructions[executorRef.current.pc]?.line || 0);
       setVariables({ ...executorRef.current.variables });
-      setOutput([...executorRef.current.output]); // Sync output
 
       // Wait for delay
       await new Promise(r => setTimeout(r, delay));
@@ -193,10 +201,22 @@ function App() {
     if (executorRef.current.status === 'error') {
       setError(executorRef.current.error);
     }
+    setIsRunning(false);
   };
 
   const handleInput = (value) => {
     if (inputResolverRef.current) {
+      // Display the user input on the same line as the prompt
+      setOutput(prev => {
+        const newOutput = [...prev];
+        if (newOutput.length > 0) {
+          newOutput[newOutput.length - 1] += value;
+        }
+        // Add a newline after the input
+        newOutput.push('');
+        return newOutput;
+      });
+
       inputResolverRef.current(value);
       inputResolverRef.current = null;
       setIsWaitingForInput(false);
@@ -340,24 +360,6 @@ FIN`);
         <div className="flex-1 flex flex-col min-w-0 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Éditeur de Code</span>
-            <div className="flex gap-2">
-              <button
-                onClick={handleStepBack}
-                className="text-xs px-2 py-1 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                disabled={!executorRef.current || history.length === 0}
-                title="Revenir en arrière"
-              >
-                ⏪ Précédent
-              </button>
-              <button
-                onClick={handleStepForward}
-                className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 font-medium"
-                disabled={!executorRef.current}
-                title="Exécuter la ligne suivante"
-              >
-                Suivant ⏩
-              </button>
-            </div>
             {error && <span className="text-xs text-red-500 font-medium truncate max-w-md">{error}</span>}
           </div>
           <div className="flex-1 relative">
@@ -374,21 +376,10 @@ FIN`);
         {/* Right: Output & Variables */}
         <div className="w-1/3 flex flex-col gap-4 min-w-[300px]">
           {/* Variables */}
-          <div className="flex-1 min-h-0 flex flex-col gap-4">
-            <div className="flex-1 min-h-0">
-              <VariablesPanel
-                variables={variables}
-                changedVariables={changedVariables}
-                inputVariables={inputVariables}
-              />
-            </div>
-            {/* Loop Panel */}
-            <div className="h-1/3 min-h-[150px]">
-              <LoopPanel
-                loops={executorRef.current?.loopStack || []}
-                variables={variables}
-              />
-            </div>
+          <div className="flex-1 min-h-0">
+            <VariablesPanel
+              variables={variables}
+            />
           </div>
 
           {/* Console */}

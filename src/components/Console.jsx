@@ -23,10 +23,10 @@ export default function Console({ output, isWaitingForInput, onInput }) {
                 Console Output
             </div>
 
-            <div className="flex-1 p-4 overflow-y-auto space-y-1">
-                {output.map((line, index) => (
-                    <div key={index} className="break-words">
-                        <span className="text-green-400">➜</span> {line}
+            <div className="flex-1 overflow-y-auto p-4 font-mono text-sm space-y-1">
+                {output.map((line, i) => (
+                    <div key={i} className="whitespace-pre-wrap break-words">
+                        {line || '\u00A0'} {/* Non-breaking space for empty lines */}
                     </div>
                 ))}
 

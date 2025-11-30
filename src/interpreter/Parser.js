@@ -135,8 +135,19 @@ export function parse(tokens) {
     function statement() {
         const token = peek();
 
+        // VAR section - allow multiple declaration lines
         if (match(TokenType.KEYWORD, 'VAR')) {
-            varDeclaration();
+            // Keep parsing variable declarations until we hit DEBUT, CONST, or other keywords
+            while (!check(TokenType.KEYWORD, 'DEBUT') &&
+                !check(TokenType.KEYWORD, 'CONST') &&
+                !isAtEnd()) {
+                // Check if next token is an identifier (start of a declaration line)
+                if (peek().type === TokenType.IDENTIFIER || peek().type === TokenType.KEYWORD) {
+                    varDeclaration();
+                } else {
+                    break; // Not a declaration line, exit VAR section
+                }
+            }
             return;
         }
         if (match(TokenType.KEYWORD, 'CONST')) {
@@ -293,26 +304,18 @@ export function parse(tokens) {
     }
 
     function printStatement() {
-        // ECRIRE(exp1, exp2, ...) or ECRIRE() for newline
-        const line = tokens[current - 1].line;
-        if (match(TokenType.PUNCTUATION, '(')) {
-            const args = [];
-            if (peek().type !== TokenType.PUNCTUATION || peek().value !== ')') {
-                do {
-                    args.push(expression());
-                } while (match(TokenType.PUNCTUATION, ','));
-            }
-            consume(TokenType.PUNCTUATION, ')', "Expect ')' after arguments");
-            // If no args, OR single empty string arg, it's a newline
-            const isNewline = args.length === 0 || (args.length === 1 && args[0].type === 'LITERAL' && args[0].value === "");
-            instructions.push({ type: 'PRINT', args: isNewline ? [] : args, newline: isNewline, line });
-        } else {
-            // Allow ECRIRE "msg" without parens? Standard is usually with parens or space.
-            // Let's assume parens for now based on example.
-            // But if user writes ECRIRE "msg", handle it?
-            const args = [expression()];
-            instructions.push({ type: 'PRINT', args, newline: false, line });
+        consume(TokenType.PUNCTUATION, '(', "Expect '(' after ECRIRE");
+        const args = [];
+        if (!check(TokenType.PUNCTUATION, ')')) {
+            do {
+                args.push(expression());
+            } while (match(TokenType.PUNCTUATION, ','));
         }
+        consume(TokenType.PUNCTUATION, ')', "Expect ')' after arguments");
+
+        // If no args OR single empty string, it's a newline
+        const isNewline = args.length === 0 || (args.length === 1 && args[0].type === 'LITERAL' && args[0].value === "");
+        instructions.push({ type: 'PRINT', args: isNewline ? [] : args, newline: isNewline, line: tokens[current - 1].line });
     }
 
     function readStatement() {

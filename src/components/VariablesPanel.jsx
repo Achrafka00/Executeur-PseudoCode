@@ -1,7 +1,8 @@
 import React from 'react';
 
-export default function VariablesPanel({ variables, changedVariables = [], inputVariables = [] }) {
-    const variableNames = Object.keys(variables);
+export default function VariablesPanel({ variables }) {
+    // Filter out internal variables (those starting with __)
+    const variableNames = Object.keys(variables).filter(name => !name.startsWith('__'));
 
     return (
         <div className="flex flex-col h-full bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -26,12 +27,15 @@ export default function VariablesPanel({ variables, changedVariables = [], input
                         <tbody className="divide-y divide-gray-100">
                             {variableNames.map(name => {
                                 const value = variables[name];
-                                const type = Array.isArray(value) ? 'TABLEAU' : typeof value === 'number' ? 'ENTIER/REEL' : typeof value === 'boolean' ? 'BOOLEEN' : 'CHAINE';
-                                const isChanged = changedVariables.includes(name);
-                                const isInput = inputVariables.includes(name);
+                                // Get the declared type from the __name_type variable if it exists
+                                const declaredType = variables[`__${name}_type`];
+                                const type = declaredType ||
+                                    (Array.isArray(value) ? 'TABLEAU' :
+                                        typeof value === 'number' ? 'NOMBRE' :
+                                            typeof value === 'boolean' ? 'BOOLEEN' : 'CHAINE');
 
                                 return (
-                                    <tr key={name} className={`transition-colors duration-500 ${isChanged ? 'bg-green-100' : isInput ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                                    <tr key={name} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-4 py-2 font-medium text-gray-700">{name}</td>
                                         <td className="px-4 py-2 font-mono text-gray-600">
                                             {Array.isArray(value) ? `[${value.join(', ')}]` : String(value)}

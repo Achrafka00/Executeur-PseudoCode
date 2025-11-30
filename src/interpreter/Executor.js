@@ -93,7 +93,7 @@ export class Executor {
                 case 'PRINT':
                     const args = instruction.args.map(arg => this.evaluate(arg));
                     if (instruction.newline) {
-                        // ECRIRE() with no args - newline only
+                        // ECRIRE() or ECRIRE("") - newline only
                         this.onPrint('', true);
                     } else {
                         // ECRIRE(...) with args - print inline (no auto newline)
@@ -221,12 +221,12 @@ export class Executor {
                 case '+': return left + right;
                 case '-': return left - right;
                 case '*':
-                    // Handle String * Number (conditional string)
+                    // Handle string * number (repetition or conditional display)
                     if (typeof left === 'string' && typeof right === 'number') {
-                        return right ? left : '';
+                        return right === 0 ? '' : left.repeat(Math.max(0, Math.floor(right)));
                     }
                     if (typeof left === 'number' && typeof right === 'string') {
-                        return left ? right : '';
+                        return left === 0 ? '' : right.repeat(Math.max(0, Math.floor(left)));
                     }
                     return left * right;
                 case '/': return left / right;
@@ -236,19 +236,25 @@ export class Executor {
                 case '^': return Math.pow(left, right);
                 case '=':
                 case '==':
-                    // Auto-cast booleans to integers for comparison
-                    const leftVal = typeof left === 'boolean' ? (left ? 1 : 0) : left;
-                    const rightVal = typeof right === 'boolean' ? (right ? 1 : 0) : right;
-                    return leftVal === rightVal;
-                case '<>': return left !== right;
+                    return left == right;
+                case '<>':
+                case '!=':
+                    return left != right;
                 case '<': return left < right;
                 case '>': return left > right;
                 case '<=': return left <= right;
                 case '>=': return left >= right;
-                case 'ET': return left && right;
-                case 'OU': return left || right;
+                case 'ET':
+                case 'AND':
+                case '&&':
+                    return left && right;
+                case 'OU':
+                case 'OR':
+                case '||':
+                    return left || right;
                 case 'XOR':
-                case 'OUEX': return (left && !right) || (!left && right); // XOR logic
+                case 'OUEX':
+                    return !!(left ? !right : right); // XOR logic
                 default: throw new Error(`Unknown operator: ${expr.operator}`);
             }
         }

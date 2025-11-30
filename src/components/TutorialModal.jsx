@@ -43,7 +43,7 @@ const STEPS = [
             <div className="space-y-4">
                 <p>Elles permettent de faire des choix. Si une condition est vraie, on fait une chose, sinon on en fait une autre.</p>
                 <div className="bg-gray-50 p-3 rounded border border-gray-200 font-mono text-sm">
-          SI age >= 18 ALORS<br />
+                    SI age &gt;= 18 ALORS<br />
                     &nbsp;&nbsp;ECRIRE("Majeur")<br />
                     SINON<br />
                     &nbsp;&nbsp;ECRIRE("Mineur")<br />
