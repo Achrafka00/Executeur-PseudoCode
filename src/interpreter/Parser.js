@@ -36,7 +36,27 @@ export function parse(tokens) {
 
     // Expression Parser (Simple recursive descent)
     function expression() {
-        return equality();
+        return logicOr();
+    }
+
+    function logicOr() {
+        let expr = logicAnd();
+        while (match(TokenType.OPERATOR, 'OU') || match(TokenType.OPERATOR, 'OUEX') || match(TokenType.OPERATOR, 'XOR')) {
+            const operator = tokens[current - 1].value;
+            const right = logicAnd();
+            expr = { type: 'BINARY', operator, left: expr, right };
+        }
+        return expr;
+    }
+
+    function logicAnd() {
+        let expr = equality();
+        while (match(TokenType.OPERATOR, 'ET')) {
+            const operator = tokens[current - 1].value;
+            const right = equality();
+            expr = { type: 'BINARY', operator, left: expr, right };
+        }
+        return expr;
     }
 
     function equality() {
@@ -164,6 +184,10 @@ export function parse(tokens) {
         }
         if (match(TokenType.KEYWORD, 'SI')) {
             ifStatement();
+            return;
+        }
+        if (match(TokenType.KEYWORD, 'CAS')) {
+            casParmiStatement();
             return;
         }
         if (match(TokenType.KEYWORD, 'SELON')) {
@@ -496,6 +520,96 @@ export function parse(tokens) {
         });
     }
 
+    function casParmiStatement() {
+        // CAS N PARMI
+        //     1 : Ecrire("Lundi")
+        //     1,3,5 : Ecrire("31 jours")  // Support multiple values
+        //     PAR DEFAUT : Ecrire("Invalide")
+        // FIN CAS
+        const line = tokens[current - 1].line;
+        const switchExpr = expression();
+
+        consume(TokenType.KEYWORD, 'PARMI', "Expect 'PARMI' after CAS expression");
+
+        const exitJumps = [];
+
+        // Parse case values until PAR or FIN
+        while (!check(TokenType.KEYWORD, 'PAR') && !check(TokenType.KEYWORD, 'FIN') && !isAtEnd()) {
+            // Parse comma-separated case values
+            const caseValues = [];
+            do {
+                caseValues.push(expression());
+            } while (match(TokenType.PUNCTUATION, ','));
+
+            consume(TokenType.PUNCTUATION, ':', "Expect ':' after case value(s)");
+
+            // Create combined condition with OR for multiple values
+            let condition;
+            if (caseValues.length === 1) {
+                condition = {
+                    type: 'BINARY',
+                    operator: '=',
+                    left: switchExpr,
+                    right: caseValues[0]
+                };
+            } else {
+                // Build OR chain: (expr = val1) OU (expr = val2) OU ...
+                condition = {
+                    type: 'BINARY',
+                    operator: '=',
+                    left: switchExpr,
+                    right: caseValues[0]
+                };
+                for (let i = 1; i < caseValues.length; i++) {
+                    const nextCondition = {
+                        type: 'BINARY',
+                        operator: '=',
+                        left: switchExpr,
+                        right: caseValues[i]
+                    };
+                    condition = {
+                        type: 'BINARY',
+                        operator: 'OU',
+                        left: condition,
+                        right: nextCondition
+                    };
+                }
+            }
+
+            const jumpIfFalse = instructions.length;
+            instructions.push({ type: 'JUMP_IF_FALSE', condition, target: null, line });
+
+            // Parse one statement (usually one line like Ecrire)
+            statement();
+
+            const exitJump = instructions.length;
+            instructions.push({ type: 'JUMP', target: null, line });
+            exitJumps.push(exitJump);
+
+            // Patch the jump if false to next case
+            instructions[jumpIfFalse].target = instructions.length;
+        }
+
+        // Handle PAR DEFAUT
+        if (match(TokenType.KEYWORD, 'PAR')) {
+            consume(TokenType.KEYWORD, 'DEFAUT', "Expect 'DEFAUT' after 'PAR'");
+            consume(TokenType.PUNCTUATION, ':', "Expect ':' after PAR DEFAUT");
+
+            // Parse default statement
+            statement();
+        }
+
+        // Consume FIN CAS
+        consume(TokenType.KEYWORD, 'FIN', "Expect 'FIN CAS'");
+        consume(TokenType.KEYWORD, 'CAS', "Expect 'CAS' after 'FIN'");
+
+        // Patch all exit jumps
+        const endIndex2 = instructions.length;
+        exitJumps.forEach(index => {
+            instructions[index].target = endIndex2;
+        });
+    }
+
     // Helper to peek next token
     function peekNext() {
         if (current + 1 >= tokens.length) return { type: TokenType.EOF };
@@ -665,16 +779,19 @@ export function parse(tokens) {
                 instructions[index].target = incrementInstructionIndex;
             });
         } else {
-            // Standard FOR loop with fixed step
-            const condition = {
-                type: 'BINARY',
-                operator,
-                left: { type: 'VARIABLE', name: varName },
-                right: endExpr
-            };
+            // Standard FOR loop with explicit step
+            // Use FOR_LOOP_SETUP to handle direction at runtime
+            instructions.push({
+                type: 'FOR_LOOP_SETUP',
+                varName,
+                startExpr,
+                endExpr,
+                stepExpr, // Pass the explicit step
+                line
+            });
 
             const jumpToEndIndex = instructions.length;
-            instructions.push({ type: 'JUMP_IF_FALSE', condition, target: null, line });
+            instructions.push({ type: 'FOR_LOOP_CHECK', varName, target: null, line });
 
             const breakJumps = [];
             const continueJumps = [];
@@ -696,13 +813,7 @@ export function parse(tokens) {
             consume(TokenType.KEYWORD, 'FINPOUR', "❌ ERREUR : 'FINPOUR' manquant.\n👉 Solution : Vérifiez que chaque boucle POUR a son FINPOUR correspondant.");
 
             const incrementInstructionIndex = instructions.length;
-            const increment = {
-                type: 'BINARY',
-                operator: '+',
-                left: { type: 'VARIABLE', name: varName },
-                right: stepExpr
-            };
-            instructions.push({ type: 'ASSIGN', name: varName, value: increment, line });
+            instructions.push({ type: 'FOR_LOOP_INCREMENT', varName, line });
 
             instructions.push({ type: 'JUMP', target: loopStartIndex, line });
             instructions[jumpToEndIndex].target = instructions.length;

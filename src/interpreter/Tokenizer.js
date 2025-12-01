@@ -16,7 +16,7 @@ export const TokenType = {
 const KEYWORDS = new Set([
   'ALGORITHME', 'PROGRAMME', 'VAR', 'CONST', 'DEBUT', 'FIN',
   'SI', 'ALORS', 'SINON', 'FINSI', 'SINONSI',
-  'SELON', 'FINSELON', 'CAS', 'DEFAUT',
+  'SELON', 'FINSELON', 'CAS', 'DEFAUT', 'PARMI', 'PAR',
   'POUR', 'DE', 'A', 'FAIRE', 'FINPOUR', 'PAS', 'ALLANT',
   'TANTQUE', 'FINTANTQUE', 'TANT', 'QUE', 'REPETER', "JUSQU'A",
   'ECRIRE', 'LIRE', 'CONTINUE', 'BREAK', 'SORTIR',

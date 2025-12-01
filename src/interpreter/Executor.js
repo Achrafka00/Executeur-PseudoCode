@@ -113,10 +113,19 @@ export class Executor {
                     break;
 
                 case 'FOR_LOOP_SETUP':
-                    // Setup for auto-direction loop (JUSQU'À syntax)
+                    // Setup for loop with auto-direction or explicit step
                     const start = this.variables[instruction.varName];
                     const end = this.evaluate(instruction.endExpr);
-                    const step = start <= end ? 1 : -1;
+                    let step;
+
+                    if (instruction.stepExpr) {
+                        // Explicit step provided (could be positive or negative)
+                        step = this.evaluate(instruction.stepExpr);
+                    } else {
+                        // Auto-detect step based on start/end
+                        step = start <= end ? 1 : -1;
+                    }
+
                     this.variables[`__${instruction.varName}_end`] = end;
                     this.variables[`__${instruction.varName}_step`] = step;
                     this.pc++;
