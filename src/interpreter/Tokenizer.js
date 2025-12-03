@@ -18,13 +18,14 @@ const KEYWORDS = new Set([
   'SI', 'ALORS', 'SINON', 'FINSI', 'SINONSI',
   'SELON', 'FINSELON', 'CAS', 'DEFAUT', 'PARMI', 'PAR',
   'POUR', 'DE', 'A', 'FAIRE', 'FINPOUR', 'PAS', 'ALLANT',
-  'TANTQUE', 'FINTANTQUE', 'TANT', 'QUE', 'REPETER', "JUSQU'A",
+  'TANTQUE', 'FINTANTQUE', 'TANT', 'TANT_QUE', 'QUE', 'REPETER', "JUSQU'A", "JUSQUA",
   'ECRIRE', 'LIRE', 'CONTINUE', 'BREAK', 'SORTIR',
   'ENTIER', 'REEL', 'CHAINE', 'BOOLEEN', 'TABLEAU',
-  "D'ENTIER", "D'REEL", "D'CHAINE", "D'BOOLEEN" // Handle D'Type style
+  "D'ENTIER", "D'REEL", "D'CHAINE", "D'BOOLEEN", // Handle D'Type style
+  'VRAI', 'FAUX' // Boolean constants
 ]);
 
-const OPERATORS = new Set(['+', '-', '*', '/', '=', '<', '>', '<=', '>=', '<>', '==', 'ET', 'OU', 'NON', 'XOR', 'OUEX', 'MOD', '%', '<-', '←', '**', '^']);
+const OPERATORS = new Set(['+', '-', '*', '/', '=', '<', '>', '<=', '>=', '<>', '==', '!=', '≠', 'ET', 'OU', 'NON', 'XOR', 'OUEX', 'MOD', '%', '<-', '←', '**', '^']);
 
 export function tokenize(source) {
   const tokens = [];
@@ -55,9 +56,25 @@ export function tokenize(source) {
     // Numbers
     if (/[0-9]/.test(char)) {
       let value = '';
-      while (current < source.length && /[0-9.]/.test(source[current])) {
-        value += source[current];
-        current++;
+      let hasDot = false;
+
+      while (current < source.length) {
+        const c = source[current];
+        if (/[0-9]/.test(c)) {
+          value += c;
+          current++;
+        } else if (c === '.') {
+          // Check for range operator ..
+          if (current + 1 < source.length && source[current + 1] === '.') {
+            break; // Stop at ..
+          }
+          if (hasDot) break; // Already has a decimal point
+          hasDot = true;
+          value += c;
+          current++;
+        } else {
+          break;
+        }
       }
       tokens.push({ type: TokenType.NUMBER, value: parseFloat(value), line });
       continue;
@@ -87,30 +104,22 @@ export function tokenize(source) {
     // Identifiers and Keywords
     if (/[a-zA-Z_À-ÿ]/.test(char)) {
       let value = '';
-      while (current < source.length && /[a-zA-Z0-9_À-ÿ''\'']/.test(source[current])) {
+      // Allow standard quote ' and curly quote ’ in identifiers/keywords
+      while (current < source.length && /[a-zA-Z0-9_À-ÿ'’]/.test(source[current])) {
         // Handle JUSQU'A and D'ENTIER special cases where ' is inside
-        if (/[''\'']/.test(source[current])) {
-          // Check if it's a valid apostrophe usage
-          const upperVal = value.toUpperCase();
-          if (upperVal === "JUSQU" || upperVal === "D") {
-            value += "'";
-            current++;
-            continue;
-          }
-          // Otherwise it might be start of string? 
-          // But we are in identifier loop. 
-          // If we hit ' and it's not special, we should probably stop?
-          // But the regex `/[a-zA-Z0-9_À-ÿ']/` includes '.
-          // So we consume it.
-          // Let's assume ' inside word is part of word if allowed.
+        if (/['’]/.test(source[current])) {
+          // Normalize curly quote to standard quote for keyword checking
+          // But keep it as part of value construction
+          // Actually, let's just consume it.
         }
         value += source[current];
         current++;
       }
 
-      const upperValue = value.toUpperCase();
+      // Normalize value for keyword check: uppercase and replace curly quote with standard quote
+      let normalizedValue = value.toUpperCase().replace(/’/g, "'");
       // Normalize accents: JUSQU'A -> JUSQU'A (standardize)
-      const normalizedValue = upperValue.replace(/JUSQU['']A/g, "JUSQU'A");
+      normalizedValue = normalizedValue.replace(/JUSQU'A/g, "JUSQU'A"); // Ensure ' is standard
 
       if (KEYWORDS.has(normalizedValue)) {
         tokens.push({ type: TokenType.KEYWORD, value: normalizedValue, originalValue: value, line });
@@ -123,10 +132,10 @@ export function tokenize(source) {
     }
 
     // Operators and Punctuation
-    // Check for 2-char operators: <=, >=, <>, <-, ==, **
+    // Check for 2-char operators: <=, >=, <>, <-, ==, !=, **
     if (current + 1 < source.length) {
       const twoChar = char + source[current + 1];
-      if (['<=', '>=', '<>', '<-', '==', '**'].includes(twoChar)) {
+      if (['<=', '>=', '<>', '<-', '==', '!=', '**'].includes(twoChar)) {
         tokens.push({ type: TokenType.OPERATOR, value: twoChar, line });
         current += 2;
         continue;

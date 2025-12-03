@@ -61,7 +61,9 @@ export function parse(tokens) {
 
     function equality() {
         let expr = comparison();
-        while (match(TokenType.OPERATOR, '=') || match(TokenType.OPERATOR, '==') || match(TokenType.OPERATOR, '<>')) {
+        while (match(TokenType.OPERATOR, '=') || match(TokenType.OPERATOR, '==') ||
+            match(TokenType.OPERATOR, '<>') || match(TokenType.OPERATOR, '!=') ||
+            match(TokenType.OPERATOR, '≠')) {
             const operator = tokens[current - 1].value;
             const right = comparison();
             expr = { type: 'BINARY', operator, left: expr, right };
@@ -123,6 +125,10 @@ export function parse(tokens) {
         if (match(TokenType.NUMBER)) return { type: 'LITERAL', value: tokens[current - 1].value };
         if (match(TokenType.STRING)) return { type: 'LITERAL', value: tokens[current - 1].value };
 
+        // Boolean literals
+        if (match(TokenType.KEYWORD, 'VRAI')) return { type: 'LITERAL', value: true };
+        if (match(TokenType.KEYWORD, 'FAUX')) return { type: 'LITERAL', value: false };
+
         if (match(TokenType.IDENTIFIER)) {
             const name = tokens[current - 1].value;
             // Check for Array Access T[i]
@@ -157,12 +163,26 @@ export function parse(tokens) {
 
         // VAR section - allow multiple declaration lines
         if (match(TokenType.KEYWORD, 'VAR')) {
-            // Keep parsing variable declarations until we hit DEBUT, CONST, or other keywords
+            // Keep parsing variable declarations until we hit DEBUT, CONST, VAR (new statement), or other keywords
             while (!check(TokenType.KEYWORD, 'DEBUT') &&
                 !check(TokenType.KEYWORD, 'CONST') &&
+                !check(TokenType.KEYWORD, 'VAR') &&  // Stop at another VAR statement
                 !isAtEnd()) {
+
                 // Check if next token is an identifier (start of a declaration line)
-                if (peek().type === TokenType.IDENTIFIER || peek().type === TokenType.KEYWORD) {
+                if (peek().type === TokenType.IDENTIFIER) {
+                    // CRITICAL FIX: Check if this identifier is followed by an assignment (←, <-, =)
+                    // If so, it's the start of the program logic, NOT a variable declaration.
+                    // We need to peek TWO tokens ahead.
+                    const nextNext = peekNext();
+                    if (nextNext && nextNext.type === TokenType.OPERATOR &&
+                        (['←', '<-', '='].includes(nextNext.value))) {
+                        break; // It's an assignment, exit VAR section
+                    }
+                    varDeclaration();
+                } else if (peek().type === TokenType.KEYWORD &&
+                    !['DEBUT', 'CONST', 'VAR', 'ECRIRE', 'LIRE', 'SI', 'POUR', 'TANTQUE', 'TANT', 'TANT_QUE', 'REPETER', 'SELON', 'CAS'].includes(peek().value)) {
+                    // Allow keywords used as variable names if they aren't reserved statements
                     varDeclaration();
                 } else {
                     break; // Not a declaration line, exit VAR section
@@ -194,8 +214,8 @@ export function parse(tokens) {
             switchStatement();
             return;
         }
-        if (match(TokenType.KEYWORD, 'TANTQUE') || match(TokenType.KEYWORD, 'TANT')) {
-            // Handle TANT QUE (two words)
+        if (match(TokenType.KEYWORD, 'TANTQUE') || match(TokenType.KEYWORD, 'TANT') || match(TokenType.KEYWORD, 'TANT_QUE')) {
+            // Handle TANT QUE (two words) or TANT_QUE (with underscore)
             if (token.value === 'TANT') {
                 consume(TokenType.KEYWORD, 'QUE', "Expect 'QUE' after 'TANT'");
             }
@@ -250,8 +270,16 @@ export function parse(tokens) {
 
         consume(TokenType.PUNCTUATION, ':', "Expect ':' after variable names");
 
-        if (match(TokenType.KEYWORD, 'TABLEAU')) {
-            // TABLEAU[start..end] D'TYPE or TABLEAU[size] D'TYPE
+        // Check for TABLEAU keyword or Tableau identifier (case-insensitive)
+        const nextToken = peek();
+        const isTableauKeyword = nextToken.type === TokenType.KEYWORD && nextToken.value === 'TABLEAU';
+        const isTableauIdentifier = nextToken.type === TokenType.IDENTIFIER && nextToken.value.toUpperCase() === 'TABLEAU';
+
+        if (isTableauKeyword || isTableauIdentifier) {
+            // Consume the TABLEAU keyword or Tableau identifier
+            advance();
+
+            // TABLEAU[start..end] D'TYPE or TABLEAU[size] D'TYPE or Tableau[...] : TYPE
             consume(TokenType.PUNCTUATION, '[', "Expect '[' after TABLEAU");
 
             const firstExpr = expression();
@@ -273,31 +301,36 @@ export function parse(tokens) {
 
             consume(TokenType.PUNCTUATION, ']', "Expect ']' after range");
 
-            // Handle D'ENTIER or DE ENTIER or just ENTIER
-            // User example: TABLEAU[1..5] D’ENTIER
-            // My tokenizer might produce D'ENTIER keyword if I added it.
-            // Or D then ENTIER.
+            // Handle type after array: D'TYPE or : TYPE or just TYPE
             let type = 'ENTIER'; // Default
-            if (match(TokenType.KEYWORD, "D'ENTIER")) type = 'ENTIER';
-            else if (match(TokenType.KEYWORD, "D'REEL")) type = 'REEL';
-            else if (match(TokenType.KEYWORD, "D'CHAINE")) type = 'CHAINE';
-            else if (match(TokenType.KEYWORD, "D'BOOLEEN")) type = 'BOOLEEN';
-            else if (match(TokenType.KEYWORD, "DE")) {
+
+            // Check for : TYPE syntax (alternative) - must come first
+            if (match(TokenType.PUNCTUATION, ':')) {
+                // After :, expect a type keyword
+                const typeToken = peek();
+                if (typeToken.type === TokenType.KEYWORD &&
+                    ['ENTIER', 'REEL', 'CHAINE', 'BOOLEEN'].includes(typeToken.value)) {
+                    type = advance().value;
+                } else {
+                    throw new Error("Expect type (ENTIER, REEL, CHAINE, BOOLEEN) after ':' in array declaration");
+                }
+            } else if (match(TokenType.KEYWORD, "D'ENTIER")) {
+                type = 'ENTIER';
+            } else if (match(TokenType.KEYWORD, "D'REEL")) {
+                type = 'REEL';
+            } else if (match(TokenType.KEYWORD, "D'CHAINE")) {
+                type = 'CHAINE';
+            } else if (match(TokenType.KEYWORD, "D'BOOLEEN")) {
+                type = 'BOOLEEN';
+            } else if (match(TokenType.KEYWORD, "DE")) {
                 type = consume(TokenType.KEYWORD, "Expect type after DE").value;
-            } else if (match(TokenType.KEYWORD, "D")) {
-                // Handle D'ENTIER if split?
-                // If tokenizer split D'ENTIER into D and ' and ENTIER?
-                // My tokenizer logic for D'ENTIER handles it as one keyword if it matches.
-                // If user used smart quote, it might fail.
-                // Let's assume standard type follows if not D'TYPE.
-                // Or maybe just consume type directly.
-                // Check if next is type.
-                if (check(TokenType.KEYWORD, 'ENTIER') || check(TokenType.KEYWORD, 'REEL')) {
+            } else {
+                // Just consume type directly if present
+                const nextToken = peek();
+                if (nextToken.type === TokenType.KEYWORD &&
+                    ['ENTIER', 'REEL', 'CHAINE', 'BOOLEEN'].includes(nextToken.value)) {
                     type = advance().value;
                 }
-            } else {
-                // Just consume type
-                type = consume(TokenType.KEYWORD, "Expect type").value;
             }
 
             instructions.push({
@@ -320,9 +353,11 @@ export function parse(tokens) {
     }
 
     function constDeclaration() {
-        // CONST PI = 3.14
+        // CONST PI = 3.14 or CONST PI ← 3.14
         const name = consume(TokenType.IDENTIFIER, "Expect constant name").value;
-        consume(TokenType.OPERATOR, '=', "Expect '=' after constant name");
+        if (!match(TokenType.OPERATOR, '=') && !match(TokenType.OPERATOR, '←') && !match(TokenType.OPERATOR, '<-')) {
+            throw new Error("Expect '=' or '←' after constant name");
+        }
         const value = expression();
         instructions.push({ type: 'CONST', name, value, line: tokens[current - 1].line });
     }
@@ -653,26 +688,32 @@ export function parse(tokens) {
 
     function repeatStatement() {
         // REPETER ... JUSQU'A condition
-        const line = tokens[current - 1].line;
         const loopStartIndex = instructions.length;
 
-        while (!check(TokenType.KEYWORD, "JUSQU'A") && !isAtEnd()) {
+        // Check for JUSQU'A (Keyword), JUSQUA (Keyword), or JUSQUA (Identifier - fallback)
+        const isJusqua = () =>
+            check(TokenType.KEYWORD, "JUSQU'A") ||
+            check(TokenType.KEYWORD, "JUSQUA") ||
+            (check(TokenType.IDENTIFIER, "JUSQUA"));
+
+        while (!isJusqua() && !isAtEnd()) {
             statement();
         }
 
-        consume(TokenType.KEYWORD, "JUSQU'A", "Expect 'JUSQU'A'");
-        const condition = expression();
-
-        // If condition is false, repeat (Jump back)
-        // Wait, JUSQU'A (Until) means repeat UNTIL condition is true.
-        // So if condition is FALSE, we jump back.
-        instructions.push({ type: 'JUMP_IF_FALSE', condition, target: loopStartIndex, line });
+        if (isJusqua()) {
+            advance(); // Consume the token (whether keyword or identifier)
+            const condition = expression();
+            // Jump back if condition is FALSE (Repeat UNTIL condition is true)
+            // So we loop if condition is FALSE.
+            instructions.push({ type: 'JUMP_IF_FALSE', condition, target: loopStartIndex, line: tokens[current - 1].line });
+        } else {
+            throw new Error("Expect 'JUSQU'A' after REPETER block");
+        }
     }
 
     function forStatement() {
         // POUR i DE start A end [PAS DE step] FAIRE ... FINPOUR
         // POUR i ← start JUSQU'À end FAIRE
-        // POUR i ALLANT DE start A end
         const line = tokens[current - 1].line;
         const varName = consume(TokenType.IDENTIFIER, "Expect variable name").value;
 
