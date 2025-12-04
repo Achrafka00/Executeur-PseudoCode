@@ -37,52 +37,49 @@ export default function Editor({ code, onChange, currentLine, errorLine, suggest
                 ))}
             </div>
 
-            {/* Code Area Container - Stack Overlay and Textarea */}
-            <div className="relative flex-1 h-full">
-                {/* Highlighting Overlay (Background) */}
-                <div
-                    ref={overlayRef}
-                    className="absolute inset-0 pointer-events-none overflow-hidden py-4 px-4 z-0"
-                    aria-hidden="true"
-                >
-                    {lines.map((line, i) => {
-                        const lineSuggestion = suggestions?.find(s => s.line === i + 1);
-                        return (
-                            <div key={i} className="leading-6 h-6 w-full relative flex items-center">
-                                {currentLine === i + 1 && (
-                                    <div className="absolute inset-0 bg-blue-100 opacity-30 -mx-4"></div>
-                                )}
-                                {errorLine === i + 1 && (
-                                    <div className="absolute inset-0 bg-red-100 opacity-30 -mx-4 border-l-2 border-red-500"></div>
-                                )}
-                                {lineSuggestion && (
-                                    <div className="absolute right-0 text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-200 shadow-sm translate-x-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-auto">
-                                        {lineSuggestion.message}
-                                    </div>
-                                )}
-                                {lineSuggestion && (
-                                    <div className="absolute right-2 text-yellow-500 cursor-help pointer-events-auto" title={lineSuggestion.message}>
-                                        {lineSuggestion.type === 'warning' ? '⚠️' : 'ℹ️'}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
+            {/* Code Area */}
+            <textarea
+                ref={textareaRef}
+                value={code}
+                onChange={(e) => onChange(e.target.value)}
+                onScroll={handleScroll}
+                className="flex-1 p-4 outline-none resize-none leading-6 whitespace-pre overflow-y-auto font-mono"
+                style={{ tabSize: 4 }}
+                spellCheck="false"
+                autoCapitalize="off"
+                autoComplete="off"
+                autoCorrect="off"
+            />
 
-                {/* Textarea (Foreground - Interactive) */}
-                <textarea
-                    ref={textareaRef}
-                    value={code}
-                    onChange={(e) => onChange(e.target.value)}
-                    onScroll={handleScroll}
-                    className="absolute inset-0 w-full h-full p-4 outline-none resize-none leading-6 whitespace-pre overflow-auto bg-transparent z-10 text-gray-800 font-mono"
-                    style={{ tabSize: 4 }}
-                    spellCheck="false"
-                    autoCapitalize="off"
-                    autoComplete="off"
-                    autoCorrect="off"
-                />
+            {/* Highlighting Overlay */}
+            <div
+                ref={overlayRef}
+                className="absolute top-0 left-12 right-0 bottom-0 pointer-events-none overflow-hidden py-4 px-4"
+                aria-hidden="true"
+            >
+                {lines.map((line, i) => {
+                    const lineSuggestion = suggestions?.find(s => s.line === i + 1);
+                    return (
+                        <div key={i} className="leading-6 h-6 w-full relative flex items-center">
+                            {currentLine === i + 1 && (
+                                <div className="absolute inset-0 bg-blue-100 opacity-30 -mx-4"></div>
+                            )}
+                            {errorLine === i + 1 && (
+                                <div className="absolute inset-0 bg-red-100 opacity-30 -mx-4 border-l-2 border-red-500"></div>
+                            )}
+                            {lineSuggestion && (
+                                <div className="absolute right-0 text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-200 shadow-sm translate-x-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-auto">
+                                    {lineSuggestion.message}
+                                </div>
+                            )}
+                            {lineSuggestion && (
+                                <div className="absolute right-2 text-yellow-500 cursor-help pointer-events-auto" title={lineSuggestion.message}>
+                                    {lineSuggestion.type === 'warning' ? '⚠️' : 'ℹ️'}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
