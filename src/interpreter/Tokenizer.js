@@ -25,7 +25,7 @@ const KEYWORDS = new Set([
   'VRAI', 'FAUX' // Boolean constants
 ]);
 
-const OPERATORS = new Set(['+', '-', '*', '/', '=', '<', '>', '<=', '>=', '<>', '==', '!=', '≠', 'ET', 'OU', 'NON', 'XOR', 'OUEX', 'MOD', '%', '<-', '←', '**', '^']);
+const OPERATORS = new Set(['+', '-', '*', '/', '=', '<', '>', '<=', '>=', '<>', '==', '!=', '=!', '≠', 'ET', 'OU', 'NON', 'XOR', 'OUEX', 'MOD', '%', '<-', '←', '**', '^']);
 
 export function tokenize(source) {
   const tokens = [];
@@ -132,10 +132,10 @@ export function tokenize(source) {
     }
 
     // Operators and Punctuation
-    // Check for 2-char operators: <=, >=, <>, <-, ==, !=, **
+    // Check for 2-char operators: <=, >=, <>, <-, ==, !=, =!, **
     if (current + 1 < source.length) {
       const twoChar = char + source[current + 1];
-      if (['<=', '>=', '<>', '<-', '==', '!=', '**'].includes(twoChar)) {
+      if (['<=', '>=', '<>', '<-', '==', '!=', '=!', '**'].includes(twoChar)) {
         tokens.push({ type: TokenType.OPERATOR, value: twoChar, line });
         current += 2;
         continue;

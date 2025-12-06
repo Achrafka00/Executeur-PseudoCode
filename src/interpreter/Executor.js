@@ -44,9 +44,14 @@ export class Executor {
 
             switch (instruction.type) {
                 case 'DECLARE':
-                    // Initialize variables
+                    // Declare variable(s)
                     instruction.names.forEach(name => {
-                        this.variables[name] = 0; // Default to 0/null
+                        // Initialize with provided value or default to 0
+                        if (instruction.initValue) {
+                            this.variables[name] = this.evaluate(instruction.initValue);
+                        } else {
+                            this.variables[name] = 0;
+                        }
                         this.variables[`__${name}_type`] = instruction.varType;
                     });
                     this.pc++;
@@ -58,7 +63,14 @@ export class Executor {
                         const start = this.evaluate(instruction.startExpr);
                         const end = this.evaluate(instruction.endExpr);
                         const size = end - start + 1;
-                        this.variables[name] = new Array(size).fill(0);
+
+                        // Initialize with provided value or default to 0
+                        if (instruction.initValue) {
+                            const fillValue = this.evaluate(instruction.initValue);
+                            this.variables[name] = new Array(size).fill(fillValue);
+                        } else {
+                            this.variables[name] = new Array(size).fill(0);
+                        }
                         this.variables[`__${name}_start`] = start; // Store start index
                     });
                     this.pc++;
@@ -248,6 +260,7 @@ export class Executor {
                     return left == right;
                 case '<>':
                 case '!=':
+                case '=!':
                 case '≠':
                     return left != right;
                 case '<': return left < right;

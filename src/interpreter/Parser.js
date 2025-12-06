@@ -63,7 +63,7 @@ export function parse(tokens) {
         let expr = comparison();
         while (match(TokenType.OPERATOR, '=') || match(TokenType.OPERATOR, '==') ||
             match(TokenType.OPERATOR, '<>') || match(TokenType.OPERATOR, '!=') ||
-            match(TokenType.OPERATOR, '≠')) {
+            match(TokenType.OPERATOR, '=!') || match(TokenType.OPERATOR, '≠')) {
             const operator = tokens[current - 1].value;
             const right = comparison();
             expr = { type: 'BINARY', operator, left: expr, right };
@@ -146,6 +146,37 @@ export function parse(tokens) {
                 }
             }
             return { type: 'VARIABLE', name };
+        }
+
+        // Accept KEYWORD tokens as variables (excluding reserved types and statement keywords)
+        const currentToken = peek();
+        if (currentToken.type === TokenType.KEYWORD) {
+            // List of keywords that should NOT be treated as variables
+            const reservedKeywords = [
+                'ENTIER', 'REEL', 'CHAINE', 'BOOLEEN', 'TABLEAU',
+                'DEBUT', 'FIN', 'CONST', 'VAR',
+                'SI', 'ALORS', 'SINON', 'FINSI', 'SINONSI',
+                'POUR', 'FAIRE', 'FINPOUR', 'PAS', 'ALLANT',
+                'TANTQUE', 'FINTANTQUE', 'TANT_QUE', 'QUE',
+                'REPETER', 'JUSQU\'A', 'JUSQUA',
+                'ECRIRE', 'LIRE',
+                'SELON', 'FINSELON', 'CAS', 'DEFAUT', 'PARMI', 'PAR',
+                'VRAI', 'FAUX'  // Already handled above as literals
+            ];
+
+            if (!reservedKeywords.includes(currentToken.value)) {
+                advance(); // Consume the keyword
+                const name = currentToken.value;
+
+                // Check for Array Access
+                if (match(TokenType.PUNCTUATION, '[')) {
+                    const index = expression();
+                    consume(TokenType.PUNCTUATION, ']', "Expect ']' after array index");
+                    return { type: 'ARRAY_ACCESS', name, index };
+                }
+
+                return { type: 'VARIABLE', name };
+            }
         }
 
         if (match(TokenType.PUNCTUATION, '(')) {
@@ -247,7 +278,12 @@ export function parse(tokens) {
 
         // VAR x, y : ENTIER
         // VAR T : TABLEAU[1..5] D'ENTIER
+        // VAR arr[1..10] : ENTIER <- 0  (NEW: array syntax after name)
         const vars = [];
+        let isArrayDecl = false;
+        let arrayStartExpr = null;
+        let arrayEndExpr = null;
+
         do {
             let nameToken = peek();
             let name;
@@ -265,10 +301,59 @@ export function parse(tokens) {
                 name = consume(TokenType.IDENTIFIER, "Expect variable name").value;
             }
 
+            // Check for array syntax immediately after variable name: VAR arr[1..10] : TYPE
+            if (check(TokenType.PUNCTUATION, '[')) {
+                if (vars.length > 0) {
+                    throw new Error("Cannot declare multiple variables on one line when using array bracket syntax (e.g., VAR a, b[1..10] : ENTIER is not allowed).");
+                }
+                advance(); // consume '['
+
+                const firstExpr = expression();
+
+                // Check if it's range syntax (start..end) or single value (size)
+                if (match(TokenType.PUNCTUATION, '.')) {
+                    // Range syntax: arr[1..5]
+                    consume(TokenType.PUNCTUATION, '.', "Expect '..' range");
+                    arrayStartExpr = firstExpr;
+                    arrayEndExpr = expression();
+                } else {
+                    // Single value syntax: arr[MAX] or arr[5]
+                    // Assume starts at 1, ends at firstExpr
+                    arrayStartExpr = { type: 'LITERAL', value: 1 };
+                    arrayEndExpr = firstExpr;
+                }
+
+                consume(TokenType.PUNCTUATION, ']', "Expect ']' after array range");
+                isArrayDecl = true;
+            }
+
             vars.push(name);
         } while (match(TokenType.PUNCTUATION, ','));
 
         consume(TokenType.PUNCTUATION, ':', "Expect ':' after variable names");
+
+        // If we already detected array syntax (VAR arr[1..10] : TYPE)
+        if (isArrayDecl) {
+            // Just get the type
+            const type = consume(TokenType.KEYWORD, "Expect type after ':'").value;
+
+            // Check for initialization: VAR array[range] : TYPE <- value
+            let initValue = null;
+            if (match(TokenType.OPERATOR, '←') || match(TokenType.OPERATOR, '<-')) {
+                initValue = expression();
+            }
+
+            instructions.push({
+                type: 'DECLARE_ARRAY',
+                names: vars,
+                varType: type,
+                startExpr: arrayStartExpr,
+                endExpr: arrayEndExpr,
+                initValue,
+                line: tokens[current - 1].line
+            });
+            return;
+        }
 
         // Check for TABLEAU keyword or Tableau identifier (case-insensitive)
         const nextToken = peek();
@@ -333,33 +418,55 @@ export function parse(tokens) {
                 }
             }
 
+            // Check for initialization: VAR array[range] : TYPE <- value
+            let initValue = null;
+            if (match(TokenType.OPERATOR, '←') || match(TokenType.OPERATOR, '<-')) {
+                initValue = expression();
+            }
+
             instructions.push({
                 type: 'DECLARE_ARRAY',
                 names: vars,
                 varType: type,
                 startExpr,
                 endExpr,
+                initValue,
                 line: tokens[current - 1].line
             });
         } else {
             const type = consume(TokenType.KEYWORD, "Expect type").value;
+
+            // Check for initialization: VAR name : TYPE <- value
+            let initValue = null;
+            if (match(TokenType.OPERATOR, '←') || match(TokenType.OPERATOR, '<-')) {
+                initValue = expression();
+            }
+
             instructions.push({
                 type: 'DECLARE',
                 names: vars,
                 varType: type,
+                initValue,
                 line: tokens[current - 1].line
             });
         }
     }
 
     function constDeclaration() {
-        // CONST PI = 3.14 or CONST PI ← 3.14
+        // CONST PI = 3.14 or CONST PI ← 3.14 or CONST name : TYPE <- value
         const name = consume(TokenType.IDENTIFIER, "Expect constant name").value;
+
+        // Check for optional type annotation: CONST name : TYPE <- value
+        let varType = null;
+        if (match(TokenType.PUNCTUATION, ':')) {
+            varType = consume(TokenType.KEYWORD, "Expect type after ':'").value;
+        }
+
         if (!match(TokenType.OPERATOR, '=') && !match(TokenType.OPERATOR, '←') && !match(TokenType.OPERATOR, '<-')) {
             throw new Error("Expect '=' or '←' after constant name");
         }
         const value = expression();
-        instructions.push({ type: 'CONST', name, value, line: tokens[current - 1].line });
+        instructions.push({ type: 'CONST', name, value, varType, line: tokens[current - 1].line });
     }
 
     function printStatement() {
@@ -378,10 +485,24 @@ export function parse(tokens) {
     }
 
     function readStatement() {
-        // LIRE(x)
+        // LIRE(x) - x can be an identifier or a keyword used as variable name
         const line = tokens[current - 1].line;
         consume(TokenType.PUNCTUATION, '(', "Expect '(' after LIRE");
-        const name = consume(TokenType.IDENTIFIER, "Expect variable name").value;
+
+        // Accept both IDENTIFIER and KEYWORD tokens (like varDeclaration does)
+        let name;
+        const nameToken = peek();
+        if (nameToken.type === TokenType.KEYWORD) {
+            // Check if it's a reserved type keyword which shouldn't be used as var name
+            if (['ENTIER', 'REEL', 'CHAINE', 'BOOLEEN', 'TABLEAU', 'DEBUT', 'FIN', 'CONST'].includes(nameToken.value)) {
+                throw new Error(`Cannot use reserved keyword '${nameToken.value}' as variable name`);
+            }
+            advance(); // Consume keyword as identifier
+            name = nameToken.value;
+        } else {
+            name = consume(TokenType.IDENTIFIER, "Expect variable name").value;
+        }
+
         consume(TokenType.PUNCTUATION, ')', "Expect ')' after variable name");
         instructions.push({ type: 'READ', name, line });
     }
