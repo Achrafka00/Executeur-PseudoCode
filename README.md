@@ -6,6 +6,10 @@
 
 
 ## Présentation du Projet
+Ce projet est né d’un besoin réel observé durant ma formation : les étudiants ne pouvaient pas exécuter leur pseudo-code ni visualiser le fonctionnement d’un algorithme étape par étape.
+Beaucoup de débutants avaient du mal à comprendre les boucles, conditions, variables et la logique d’exécution.
+Pour répondre à ce besoin et aider mes collègues ainsi que moi-même, j’ai développé cette plateforme interactive d’apprentissage.
+
 Ce projet est une plateforme interactive construite avec React.js, TailwindCSS et Vite, permettant aux utilisateurs :
 
 d’écrire du pseudo-code algorithmique façon,
